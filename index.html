@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PO Integration Failure Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#12151A;
+    --surface:#1A1F27;
+    --surface-2:#212832;
+    --surface-3:#272F3B;
+    --border:#2A313C;
+    --text:#E7EAEE;
+    --text-muted:#8992A3;
+    --text-faint:#5B6372;
+    --fail:#E8543F;
+    --fail-dim:rgba(232,84,63,0.14);
+    --success:#45B787;
+    --success-dim:rgba(69,183,135,0.14);
+    --pending:#E0A63F;
+    --pending-dim:rgba(224,166,63,0.14);
+    --info:#4C8DE0;
+    --info-dim:rgba(76,141,224,0.14);
+    --mono:'JetBrains Mono', ui-monospace, monospace;
+    --sans:'Inter', -apple-system, sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    background:
+      radial-gradient(circle at 15% 20%, rgba(232,84,63,0.35), transparent 45%),
+      radial-gradient(circle at 85% 15%, rgba(76,141,224,0.32), transparent 50%),
+      radial-gradient(circle at 75% 80%, rgba(69,183,135,0.28), transparent 50%),
+      radial-gradient(circle at 20% 85%, rgba(224,166,63,0.22), transparent 45%),
+      linear-gradient(160deg, #0D0F14 0%, #14171F 55%, #0F1116 100%);
+    background-attachment: fixed;
+    color:var(--text); font-family:var(--sans); min-height:100vh;
+  }
+  ::selection{background:var(--fail); color:#fff;}
+  .app{max-width:1240px; margin:0 auto; padding:28px 24px 80px; position:relative; z-index:1;}
+
+  /* header */
+  .header{display:flex; align-items:center; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:16px;}
+  .header-actions{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .brand{display:flex; align-items:center; gap:12px;}
+  .brand-mark{width:34px; height:34px; border-radius:8px; background:linear-gradient(135deg,var(--fail),#c73f2e); display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-weight:700; font-size:13px; color:#fff; flex-shrink:0; box-shadow:0 4px 16px rgba(232,84,63,0.4);}
+
+  .glass{
+    background: rgba(255,255,255,0.055);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.13);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
+  }
+  .brand-text h1{font-size:16px; font-weight:700; letter-spacing:-0.01em;}
+  .brand-text p{font-size:11.5px; color:var(--text-muted); font-family:var(--mono); letter-spacing:0.02em; margin-top:1px;}
+  .live-pill{display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; color:var(--text-muted); background:rgba(255,255,255,0.06); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid rgba(255,255,255,0.13); padding:6px 12px; border-radius:20px;}
+  .live-dot{width:6px; height:6px; border-radius:50%; background:var(--success); box-shadow:0 0 0 3px var(--success-dim); animation:pulse 2s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.4;}}
+
+  /* upload zone */
+  .upload-zone{
+    border:1px solid rgba(255,255,255,0.13); border-radius:14px;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+    padding:22px 24px; display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:24px; transition:border-color .15s, background .15s; flex-wrap:wrap;
+  }
+  .upload-zone.drag{border-color:var(--fail); background:rgba(232,84,63,0.12);}
+  .upload-left{display:flex; align-items:center; gap:16px;}
+  .upload-icon{width:40px; height:40px; border-radius:9px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:var(--text-muted);}
+  .upload-copy strong{display:block; font-size:13.5px; font-weight:600;}
+  .upload-copy span{font-size:12px; color:var(--text-muted);}
+  .btn{font-family:var(--sans); font-weight:600; font-size:13px; border:none; border-radius:8px; padding:10px 18px; cursor:pointer; transition:filter .15s, transform .1s;}
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:var(--fail); color:#fff;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-ghost{background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:var(--text);}
+  .btn-ghost:hover{filter:brightness(1.15);}
+  #file-input{display:none;}
+  .upload-status{font-family:var(--mono); font-size:11.5px; color:var(--success); margin-top:8px; min-height:14px;}
+
+  /* empty state */
+  .empty{text-align:center; padding:80px 20px; color:var(--text-muted);}
+  .empty h2{color:var(--text); font-size:18px; margin-bottom:8px;}
+  .empty p{font-size:13.5px; max-width:420px; margin:0 auto;}
+
+  .hidden{display:none !important;}
+
+  /* KPI strip */
+  .kpi-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-bottom:24px;}
+  .kpi-card{
+    background: rgba(255,255,255,0.055);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.13);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-radius:14px; padding:18px 20px; position:relative; overflow:hidden;
+  }
+  .kpi-label{font-size:11px; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:10px;}
+  .kpi-value{font-family:var(--mono); font-size:26px; font-weight:700; letter-spacing:-0.02em;}
+  .kpi-sub{font-size:11.5px; color:var(--text-faint); margin-top:5px;}
+  .kpi-card.fail .kpi-value{color:var(--fail);}
+  .kpi-card.pending .kpi-value{color:var(--pending);}
+  .kpi-card.info .kpi-value{color:var(--info);}
+  .kpi-bar{position:absolute; bottom:0; left:0; height:3px; background:var(--fail); width:100%;}
+
+  /* panels */
+  .panel-row{display:grid; grid-template-columns:1.3fr 1fr; gap:14px; margin-bottom:14px;}
+  .panel{
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.13);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-radius:14px; padding:20px;
+  }
+  .single-panel{margin-bottom:14px;}
+  .panel-title{font-size:13px; font-weight:700; margin-bottom:2px;}
+  .panel-sub{font-size:11.5px; color:var(--text-muted); margin-bottom:16px;}
+  .chart-wrap{position:relative; height:230px;}
+  .chart-wrap.tall{height:270px;}
+  .cause-layout{display:flex; align-items:center; gap:32px; flex-wrap:wrap;}
+  .chart-wrap.pie{width:260px; height:260px; flex-shrink:0;}
+  .cause-legend{flex:1; min-width:240px; display:flex; flex-direction:column; gap:10px;}
+  .legend-row{display:flex; align-items:center; gap:10px; font-size:12.5px;}
+  .legend-swatch{width:10px; height:10px; border-radius:3px; flex-shrink:0;}
+  .legend-label{flex:1; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .legend-count{font-family:var(--mono); color:var(--text-muted); font-size:12px;}
+  .legend-pct{font-family:var(--mono); color:var(--text-faint); font-size:11.5px; width:46px; text-align:right;}
+
+  /* table section */
+  .table-panel{
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.13);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+    border-radius:14px; padding:20px; margin-top:14px;
+  }
+  .table-header{display:flex; justify-content:space-between; align-items:center; gap:14px; margin-bottom:16px; flex-wrap:wrap;}
+  .filters{display:flex; gap:8px; flex-wrap:wrap;}
+  .filters input, .filters select{background:rgba(255,255,255,0.06); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border:1px solid rgba(255,255,255,0.14); color:var(--text); font-family:var(--sans); font-size:12.5px; padding:8px 12px; border-radius:8px; outline:none;}
+  .filters input{width:190px;}
+  .filters input:focus, .filters select:focus{border-color:var(--fail);}
+  table{width:100%; border-collapse:collapse; font-size:12.5px;}
+  thead th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); font-weight:600; padding:0 10px 10px; border-bottom:1px solid rgba(255,255,255,0.1);}
+  tbody td{padding:11px 10px; border-bottom:1px solid rgba(255,255,255,0.06); vertical-align:middle;}
+  tbody tr:hover{background:rgba(255,255,255,0.04);}
+  .po-chip{font-family:var(--mono); font-weight:600; font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.08); padding:3px 8px; border-radius:6px; letter-spacing:0.01em;}
+  .msg-input{background:rgba(255,255,255,0.05); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.13); color:var(--text); font-family:var(--sans); font-size:12px; padding:7px 10px; border-radius:8px; outline:none; width:100%; min-width:260px;}
+  .msg-input:focus{border-color:var(--fail);}
+  .msg-input::placeholder{color:var(--text-faint);}
+  .tag-select{background:rgba(255,255,255,0.06); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); border:1px solid rgba(255,255,255,0.14); color:var(--text); font-family:var(--sans); font-size:12px; padding:6px 8px; border-radius:8px; outline:none; width:100%; max-width:200px;}
+  .tag-select.untagged{border-color:var(--pending); color:var(--pending);}
+  .tag-select.tagged{border-color:var(--success-dim);}
+  .status-dot{display:inline-block; width:6px; height:6px; border-radius:50%; margin-right:6px;}
+  .status-dot.untagged{background:var(--pending); box-shadow:0 0 0 2px var(--pending-dim);}
+  .status-dot.tagged{background:var(--success); box-shadow:0 0 0 2px var(--success-dim);}
+  .footer-note{text-align:center; font-size:11px; color:var(--text-faint); margin-top:22px; font-family:var(--mono);}
+
+  @media (max-width:900px){
+    .kpi-grid{grid-template-columns:repeat(2,1fr);}
+    .panel-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark">PO</div>
+      <div class="brand-text">
+        <h1>Integration Failure Tracker</h1>
+        <p>SAP &nbsp;⇄&nbsp; PROCOL</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <input type="file" id="backup-input" accept=".json" style="display:none;">
+      <button class="btn btn-ghost" id="import-btn" title="Load a data backup from a JSON file">Import backup</button>
+      <button class="btn btn-ghost" id="export-btn" title="Download all current data as a JSON backup">Export backup</button>
+      <div class="live-pill"><span class="live-dot"></span><span id="last-sync">no data synced yet</span></div>
+    </div>
+  </div>
+
+  <div class="upload-zone" id="upload-zone">
+    <div class="upload-left">
+      <div class="upload-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <div class="upload-copy">
+        <strong>Import PO Bulk Report</strong>
+        <span>Upload the SAP export (.xlsx) — rows with Integration Status "Failed" are pulled in automatically</span>
+        <div class="upload-status" id="upload-status"></div>
+      </div>
+    </div>
+    <div>
+      <input type="file" id="file-input" accept=".xlsx,.xls">
+      <button class="btn btn-primary" id="upload-btn">Upload report</button>
+    </div>
+  </div>
+
+  <div class="empty" id="empty-state">
+    <h2>No failures tracked yet</h2>
+    <p>Upload a PO Bulk Report export to pull in every failed SAP↔Procol integration. You'll tag each one with a root cause here.</p>
+  </div>
+
+  <div id="dashboard" class="hidden">
+
+    <div class="kpi-grid">
+      <div class="kpi-card fail">
+        <div class="kpi-label">Total failures</div>
+        <div class="kpi-value" id="kpi-total">0</div>
+        <div class="kpi-sub" id="kpi-total-sub">—</div>
+        <div class="kpi-bar"></div>
+      </div>
+      <div class="kpi-card pending">
+        <div class="kpi-label">Untagged</div>
+        <div class="kpi-value" id="kpi-untagged">0</div>
+        <div class="kpi-sub" id="kpi-untagged-sub">needs root cause</div>
+      </div>
+      <div class="kpi-card info">
+        <div class="kpi-label">Top root cause</div>
+        <div class="kpi-value" id="kpi-topcause" style="font-size:15px;">—</div>
+        <div class="kpi-sub" id="kpi-topcause-sub">—</div>
+      </div>
+    </div>
+
+    <div class="panel single-panel">
+      <div class="panel-title">Root cause breakdown</div>
+      <div class="panel-sub">Share of failed POs by tagged reason — untagged shown separately</div>
+      <div class="cause-layout">
+        <div class="chart-wrap pie"><canvas id="chart-cause"></canvas></div>
+        <div class="cause-legend" id="cause-legend"></div>
+      </div>
+    </div>
+
+    <div class="table-panel">
+      <div class="table-header">
+        <div class="panel-title" style="margin:0;">Failed purchase orders</div>
+        <div class="filters">
+          <input type="text" id="f-search" placeholder="Search PO # or failure message…">
+          <select id="f-reason"><option value="">All reasons</option></select>
+          <select id="f-tagstate">
+            <option value="">All</option>
+            <option value="untagged">Untagged only</option>
+            <option value="tagged">Tagged only</option>
+          </select>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>PO Number</th><th>Date</th><th>Root cause</th><th>Failure message</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer-note">Data stored locally to your account · export anytime via the file you re-upload</div>
+  </div>
+
+</div>
+
+<script>
+const REASONS = [
+  "PO Made",
+  "WBS Issue",
+  "GL Account",
+  "Cost Centre",
+  "Wrong Selection",
+  "Vendor Issue"
+];
+
+const MONTHS = {January:0,February:1,March:2,April:3,May:4,June:5,July:6,August:7,September:8,October:9,November:10,December:11};
+
+const ROOT_CAUSE_SEED = {"6500000117": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPKSKA0126001.01)"}, "6500000116": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPKSKA0126001.01)"}, "6500000109": {"reason": "PO Made", "failureMessage": "External document number 6500000109 already assigned"}, "6500000113": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPKSKA0126001.01)"}, "6700000010": {"reason": "PO Made", "failureMessage": "External document number 6700000010 already assigned"}, "6500000102": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EPESIFMH172606.01)"}, "6500000108": {"reason": "PO Made", "failureMessage": "External document number 6500000108 already assigned"}, "6500000107": {"reason": "PO Made", "failureMessage": "PO Made in Retry after server resolve"}, "6500000106": {"reason": "PO Made", "failureMessage": "PO Made in Retry after server resolve"}, "6500000104": {"reason": "Cost Centre", "failureMessage": "Cost element for balance sheet account cannot be posted to Cost center"}, "6500000100": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPSTMY0126017.01)"}, "6700000027": {"reason": "Wrong Selection", "failureMessage": "For Project PO Acc Assign Cat should be Q"}, "6500000091": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6700000021": {"reason": "Wrong Selection", "failureMessage": "Wrong User Input for Tax Code"}, "6500000043": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6700000004": {"reason": "PO Made", "failureMessage": "External document number 6700000004 already assigned"}, "6500000095": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPSTBL0126010.01)"}, "6500000094": {"reason": "PO Made", "failureMessage": "PO Made in Retry after server resolve"}, "6700000015": {"reason": "PO Made", "failureMessage": "External document number 6700000015 already assigned"}, "6700000007": {"reason": "PO Made", "failureMessage": "External document number 6700000007 already assigned"}, "6500000088": {"reason": "Vendor Issue", "failureMessage": "No master record exists for vendor 10403238"}, "6500000085": {"reason": "PO Made", "failureMessage": "PO Made in Retry after server resolve"}, "6500000083": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPVIKA0126001.01)"}, "6500000078": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6500000064": {"reason": "PO Made", "failureMessage": "External document number 6500000064 already assigned\""}, "6500000075": {"reason": "Wrong Selection", "failureMessage": "Enter the Valid Purchase Group"}, "6500000071": {"reason": "Vendor Issue", "failureMessage": "Vendor 10401238 blocked"}, "6500000072": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.MBRUGMKA072600.01.001)"}, "6500000070": {"reason": "PO Made", "failureMessage": "External document number 6500000070 already assigned"}, "6500000069": {"reason": "PO Made", "failureMessage": "External document number 6500000069 already assigned"}, "6500000067": {"reason": "Wrong Selection", "failureMessage": "Enter the Valid Purchase Group"}, "6500000066": {"reason": "Wrong Selection", "failureMessage": "Enter the Valid Purchase Group"}, "6500000055": {"reason": "PO Made", "failureMessage": "Purchase requisition 9100000089 item 00030 already deleted"}, "6500000063": {"reason": "PO Made", "failureMessage": "PO Made in Retry after server resolve"}, "6500000058": {"reason": "Cost Centre", "failureMessage": "Enter Cost Center"}, "6500000056": {"reason": "Wrong Selection", "failureMessage": "SGST/CGST Tax Code only Allowed"}, "6500000051": {"reason": "Cost Centre", "failureMessage": "Cost center GMM0/GKA13ET does not exist on 17.06.2026."}, "6500000041": {"reason": "PO Made", "failureMessage": "External document number 6500000041 already assigned"}, "6500000031": {"reason": "PO Made", "failureMessage": "External document number 6500000031 already assigned"}, "6500000028": {"reason": "PO Made", "failureMessage": "External document number 6500000028 already assigned"}, "6500000025": {"reason": "PO Made", "failureMessage": "External document number 6500000025 already assigned"}, "6500000024": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPPITS0126001)"}, "6700000075": {"reason": "PO Made", "failureMessage": "External document number 6700000075 already assigned"}, "6700000073": {"reason": "PO Made", "failureMessage": "External document number 6700000073 already assigned"}, "6600000032": {"reason": "PO Made", "failureMessage": "External document number 6700000032 already assigned"}, "6500000177": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPSTMY0126018.01)"}, "6600000034": {"reason": "PO Made", "failureMessage": "External document number 6700000034 already assigned"}, "6700000058": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6700000022": {"reason": "PO Made", "failureMessage": "External document number 6700000022 already assigned"}, "6500000074": {"reason": "PO Made", "failureMessage": "External document number 6500000074 already assigned"}, "6500000160": {"reason": "", "failureMessage": "Please enter material number or account assignment category"}, "6500000159": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPSTMY0126022.01)"}, "6600000028": {"reason": "Cost Centre", "failureMessage": "Plant / Cost Centre Mismatch for Line No"}, "6500000153": {"reason": "Cost Centre", "failureMessage": "Enter Cost Center"}, "6500000151": {"reason": "Cost Centre", "failureMessage": "Enter Cost Center"}, "6700000060": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6500000150": {"reason": "Cost Centre", "failureMessage": "Plant / Cost Centre Mismatch for Line No"}, "6500000149": {"reason": "Cost Centre", "failureMessage": "Enter Cost Center"}, "6700000059": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6700000057": {"reason": "GL Account", "failureMessage": "Enter G/L Account"}, "6600000018": {"reason": "PO Made", "failureMessage": "External document number 6600000018 already assigned"}, "6500000134": {"reason": "WBS Issue", "failureMessage": "User status NOBU is active (WBS H.EEPSTMY0126005.01)"}, "6700000088": {"reason": "Wrong Selection", "failureMessage": "SGST/CGST Tax Code only Allowed"}, "6600000045": {"reason": "Wrong Selection", "failureMessage": "Enter the Valid Purchase Group"}};
+// One-time backfill: root cause + failure detail mapping supplied 2026-07-02, applied automatically on import.
+
+// POs confirmed succeeded — excluded permanently even if they reappear in an import.
+const EXCLUDED_POS = ['6600000031','6500000157','6500000132','6700000051','6700000038'];
+
+function matchReason(raw){
+  const norm = String(raw||'').trim().toLowerCase();
+  return REASONS.find(r => r.toLowerCase() === norm) || null;
+}
+
+function formatCellDate(val){
+  if(val instanceof Date && !isNaN(val)) return val.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'});
+  return val ? String(val).trim() : '';
+}
+
+let records = [];
+const STORE_KEY = 'po-failure-records';
+let charts = {};
+
+function parseDate(str){
+  if(!str) return null;
+  const parts = String(str).trim().split(' ');
+  if(parts.length === 3 && MONTHS[parts[1]] !== undefined){
+    return new Date(parseInt(parts[2]), MONTHS[parts[1]], parseInt(parts[0]));
+  }
+  const d = new Date(str);
+  return isNaN(d) ? null : d;
+}
+
+function fmtMoney(n){
+  if(n >= 10000000) return '₹' + (n/10000000).toFixed(2) + 'Cr';
+  if(n >= 100000) return '₹' + (n/100000).toFixed(2) + 'L';
+  return '₹' + Math.round(n).toLocaleString('en-IN');
+}
+
+// Storage shim: uses Claude's window.storage when available (artifact viewer),
+// falls back to localStorage for any normal web host (e.g. GitHub Pages).
+const hasClaudeStorage = typeof window.storage !== 'undefined' && typeof window.storage.get === 'function';
+
+async function storageGet(key){
+  if(hasClaudeStorage){
+    const res = await window.storage.get(key, false);
+    return res ? res.value : null;
+  }
+  return localStorage.getItem(key);
+}
+
+async function storageSet(key, value){
+  if(hasClaudeStorage){
+    await window.storage.set(key, value, false);
+  } else {
+    localStorage.setItem(key, value);
+  }
+}
+
+async function loadRecords(){
+  try{
+    const val = await storageGet(STORE_KEY);
+    records = val ? JSON.parse(val) : [];
+  }catch(e){
+    records = [];
+  }
+  // backward-compat: older records used reasonNote instead of failureMessage
+  records.forEach(r => {
+    if(r.reasonNote && !r.failureMessage) r.failureMessage = r.reasonNote;
+    if(r.failureMessage === undefined) r.failureMessage = '';
+  });
+  const before = records.length;
+  records = records.filter(r => !EXCLUDED_POS.includes(r.po));
+  if(records.length !== before) saveRecords();
+  render();
+}
+
+async function saveRecords(){
+  try{
+    await storageSet(STORE_KEY, JSON.stringify(records));
+  }catch(e){
+    console.error('Storage save failed', e);
+  }
+}
+
+function handleFile(file){
+  const status = document.getElementById('upload-status');
+  status.style.color = 'var(--text-muted)';
+  status.textContent = 'Reading file…';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const sheetName = wb.SheetNames.includes('Report') ? 'Report' : wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+
+      // Look at the FULL sheet so we can drop POs that have since succeeded —
+      // not just currently-failed rows.
+      const statusByPo = {};
+      rows.forEach(r => {
+        const po = String(r['Purchase Order Number']||'').trim();
+        if(po) statusByPo[po] = {row: r, status: String(r['Integration Status']||'').trim().toLowerCase()};
+      });
+
+      const existingByPo = {};
+      records.forEach(r => existingByPo[r.po] = r);
+
+      let newCount = 0, droppedCount = 0;
+
+      // 1) Drop any tracked PO that has now succeeded; refresh ones still failing
+      Object.keys(existingByPo).forEach(po => {
+        const match = statusByPo[po];
+        if(!match) return; // not present in this file — leave as-is
+        if(match.status === 'success'){
+          delete existingByPo[po];
+          droppedCount++;
+        } else if(match.status === 'failed'){
+          Object.assign(existingByPo[po], {
+            vendor: match.row['Vendor Name']||existingByPo[po].vendor,
+            purchaseGroup: match.row['Purchase Group']||existingByPo[po].purchaseGroup,
+            docDate: match.row['Document Date']||existingByPo[po].docDate,
+            amount: parseFloat(match.row['Total amount']) || existingByPo[po].amount || 0,
+          });
+          const seed = ROOT_CAUSE_SEED[po];
+          if(seed){
+            if(!existingByPo[po].reason && seed.reason) existingByPo[po].reason = seed.reason;
+            if(!existingByPo[po].failureMessage && seed.failureMessage) existingByPo[po].failureMessage = seed.failureMessage;
+          }
+        }
+      });
+
+      // 2) Add newly-failed POs we haven't seen before
+      Object.values(statusByPo).filter(m => m.status === 'failed').forEach(m => {
+        const po = String(m.row['Purchase Order Number']||'').trim();
+        if(!po || existingByPo[po] || EXCLUDED_POS.includes(po)) return;
+        newCount++;
+        existingByPo[po] = {
+          po,
+          vendor: m.row['Vendor Name']||'Unknown vendor',
+          vendorCode: m.row['Vendor Code']||'',
+          companyCode: m.row['Company Code']||'',
+          purchaseGroup: m.row['Purchase Group']||'—',
+          purchaseOrg: m.row['Purchase Organization']||'',
+          docType: m.row['Document Type']||'',
+          docDate: m.row['Document Date']||'',
+          createdBy: m.row['Created By']||'',
+          amount: parseFloat(m.row['Total amount']) || 0,
+          reason: (ROOT_CAUSE_SEED[po] && ROOT_CAUSE_SEED[po].reason) || '',
+          reasonNote: '',
+          failureMessage: (ROOT_CAUSE_SEED[po] && ROOT_CAUSE_SEED[po].failureMessage) || '',
+          taggedAt: null
+        };
+      });
+
+      records = Object.values(existingByPo).filter(r => !EXCLUDED_POS.includes(r.po));
+      saveRecords();
+      status.style.color = 'var(--success)';
+      let msg = `Synced ${sheetName} · ${newCount} new failure${newCount===1?'':'s'}`;
+      if(droppedCount) msg += `, ${droppedCount} cleared (now succeeded)`;
+      status.textContent = msg;
+      document.getElementById('last-sync').textContent = `synced ${new Date().toLocaleString()}`;
+      render();
+    }catch(err){
+      status.style.color = 'var(--fail)';
+      status.textContent = 'Could not read that file — check it\'s a valid PO Bulk Report export.';
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('upload-btn').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', (e) => {
+  if(e.target.files[0]) handleFile(e.target.files[0]);
+});
+const zone = document.getElementById('upload-zone');
+['dragover','dragenter'].forEach(ev => zone.addEventListener(ev, e => {e.preventDefault(); zone.classList.add('drag');}));
+['dragleave','drop'].forEach(ev => zone.addEventListener(ev, e => {e.preventDefault(); zone.classList.remove('drag');}));
+zone.addEventListener('drop', e => {
+  if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+
+function exportBackup(){
+  const blob = new Blob([JSON.stringify(records, null, 2)], {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `po-failure-tracker-backup-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importBackup(file){
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try{
+      const incoming = JSON.parse(e.target.result);
+      if(!Array.isArray(incoming)) throw new Error('not an array');
+      const existingByPo = {};
+      records.forEach(r => existingByPo[r.po] = r);
+      incoming.forEach(r => { if(r && r.po) existingByPo[r.po] = {...existingByPo[r.po], ...r}; });
+      records = Object.values(existingByPo).filter(r => !EXCLUDED_POS.includes(r.po));
+      await saveRecords();
+      render();
+      alert(`Imported ${incoming.length} record(s) from backup.`);
+    }catch(err){
+      alert('Could not read that backup file — make sure it\'s an unmodified export from this app.');
+      console.error(err);
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('export-btn').addEventListener('click', exportBackup);
+document.getElementById('import-btn').addEventListener('click', () => document.getElementById('backup-input').click());
+document.getElementById('backup-input').addEventListener('change', (e) => {
+  if(e.target.files[0]) importBackup(e.target.files[0]);
+});
+
+function getFilters(){
+  return {
+    search: document.getElementById('f-search').value.trim().toLowerCase(),
+    reason: document.getElementById('f-reason').value,
+    tagstate: document.getElementById('f-tagstate').value
+  };
+}
+
+function applyFilters(list){
+  const f = getFilters();
+  return list.filter(r => {
+    if(f.search && !(r.po.toLowerCase().includes(f.search) || (r.failureMessage||'').toLowerCase().includes(f.search))) return false;
+    if(f.reason && r.reason !== f.reason) return false;
+    if(f.tagstate === 'untagged' && r.reason) return false;
+    if(f.tagstate === 'tagged' && !r.reason) return false;
+    return true;
+  });
+}
+
+function render(){
+  const hasData = records.length > 0;
+  document.getElementById('empty-state').classList.toggle('hidden', hasData);
+  document.getElementById('dashboard').classList.toggle('hidden', !hasData);
+  if(!hasData) return;
+
+  renderKpis();
+  renderCharts();
+  renderReasonFilterOptions();
+  renderTable();
+}
+
+function renderKpis(){
+  const total = records.length;
+  const untagged = records.filter(r => !r.reason).length;
+
+  const counts = {};
+  records.filter(r=>r.reason).forEach(r => counts[r.reason] = (counts[r.reason]||0)+1);
+  let topCause = '—', topCount = 0;
+  Object.entries(counts).forEach(([k,v]) => { if(v > topCount){topCause = k; topCount = v;} });
+
+  document.getElementById('kpi-total').textContent = total;
+  document.getElementById('kpi-total-sub').textContent = `across ${new Set(records.map(r=>r.vendor)).size} vendors`;
+  document.getElementById('kpi-untagged').textContent = untagged;
+  document.getElementById('kpi-untagged-sub').textContent = untagged === 0 ? 'all caught up' : 'needs root cause';
+  document.getElementById('kpi-topcause').textContent = topCause;
+  document.getElementById('kpi-topcause-sub').textContent = topCount ? `${topCount} of ${total} failures` : 'no reasons tagged yet';
+}
+
+function destroyChart(id){ if(charts[id]){ charts[id].destroy(); delete charts[id]; } }
+
+const CAUSE_COLORS = ['#E8543F','#4C8DE0','#45B787','#8B5CF6','#EC4899','#F59E0B'];
+
+function renderCharts(){
+  const counts = {};
+  records.forEach(r => {
+    const key = r.reason || 'Untagged';
+    counts[key] = (counts[key]||0) + 1;
+  });
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  const total = records.length;
+  const colors = sorted.map((s,i) => s[0]==='Untagged' ? '#E0A63F' : CAUSE_COLORS[i % CAUSE_COLORS.length]);
+
+  destroyChart('cause');
+  charts.cause = new Chart(document.getElementById('chart-cause'), {
+    type: 'pie',
+    data: {
+      labels: sorted.map(s=>s[0]),
+      datasets: [{
+        data: sorted.map(s=>s[1]),
+        backgroundColor: colors,
+        borderColor: '#1A1F27',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {display:false},
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const v = ctx.raw;
+              const pct = ((v/total)*100).toFixed(1);
+              return `${ctx.label}: ${v} POs (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  const legend = document.getElementById('cause-legend');
+  legend.innerHTML = sorted.map((s,i) => {
+    const pct = ((s[1]/total)*100).toFixed(1);
+    return `
+      <div class="legend-row">
+        <span class="legend-swatch" style="background:${colors[i]}"></span>
+        <span class="legend-label" title="${s[0]}">${s[0]}</span>
+        <span class="legend-count">${s[1]} PO${s[1]===1?'':'s'}</span>
+        <span class="legend-pct">${pct}%</span>
+      </div>`;
+  }).join('');
+}
+
+function renderReasonFilterOptions(){
+  const sel = document.getElementById('f-reason');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All reasons</option>' + REASONS.map(r => `<option value="${r}">${r}</option>`).join('');
+  sel.value = current;
+}
+
+function renderTable(){
+  const tbody = document.getElementById('table-body');
+  const list = applyFilters(records).sort((a,b) => {
+    const da = parseDate(a.docDate), db = parseDate(b.docDate);
+    return (db?db.getTime():0) - (da?da.getTime():0);
+  });
+
+  if(list.length === 0){
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--text-faint); padding:30px 0;">No failures match these filters</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = list.map(r => {
+    const isTagged = !!r.reason;
+    const reasonOptions = REASONS.map(rs => `<option value="${rs}" ${r.reason===rs?'selected':''}>${rs}</option>`).join('');
+    return `
+      <tr data-po="${r.po}">
+        <td><span class="po-chip">${r.po}</span></td>
+        <td>${r.docDate||'—'}</td>
+        <td>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span class="status-dot ${isTagged?'tagged':'untagged'}"></span>
+            <select class="tag-select ${isTagged?'tagged':'untagged'}" data-po="${r.po}" data-field="reason">
+              <option value="">— select —</option>
+              ${reasonOptions}
+            </select>
+          </div>
+        </td>
+        <td>
+          <input type="text" class="msg-input" data-po="${r.po}" data-field="failureMessage" placeholder="Describe what failed…" value="${(r.failureMessage||'').replace(/"/g,'&quot;')}">
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  tbody.querySelectorAll('.tag-select').forEach(sel => {
+    sel.addEventListener('change', async (e) => {
+      const po = e.target.dataset.po;
+      const rec = records.find(r => r.po === po);
+      rec.reason = e.target.value;
+      rec.taggedAt = e.target.value ? new Date().toISOString() : null;
+      await saveRecords();
+      render();
+    });
+  });
+  tbody.querySelectorAll('.msg-input').forEach(inp => {
+    inp.addEventListener('change', async (e) => {
+      const po = e.target.dataset.po;
+      const rec = records.find(r => r.po === po);
+      rec.failureMessage = e.target.value;
+      await saveRecords();
+    });
+  });
+}
+
+['f-search','f-reason','f-tagstate'].forEach(id => {
+  document.getElementById(id).addEventListener('input', renderTable);
+  document.getElementById(id).addEventListener('change', renderTable);
+});
+
+loadRecords();
+</script>
+</body>
+</html>
